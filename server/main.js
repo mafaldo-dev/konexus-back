@@ -15,17 +15,21 @@ import dotenv from "dotenv"
 dotenv.config({ path: "../.env" })
 
 const app = express()
+
 app.use(cors({
     origin: "http://localhost:3000",
-    methods: ["POST", "GET", "PUT", "DELETE"],
+    methods: ["POST", "GET", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"]
 }))
 
-app.use(express.json())
+
+// Para PNG + ICO, 5MB é mais que suficiente
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ limit: '5mb', extended: true }));
 
 
 
-app.use("/add", adminRouter)
+app.use("/admin", adminRouter)
 
 // LOGIN ROUTE
 app.use("/login", loginRouter )
