@@ -95,7 +95,6 @@ export const employeeLogin = async (req, res) => {
         c.access, 
         c.sector,
         comp.name AS "companyName",
-        comp.logo AS "companyLogo", 
         comp.icon AS "companyIcon"
       FROM Contributor c
       LEFT JOIN companies comp ON c.companyId = comp.id
@@ -151,7 +150,6 @@ export const employeeLogin = async (req, res) => {
         userType: "Contributor",
         // ✅ DADOS DA EMPRESA AGREGADOS
         companyName: employee.companyName,
-        companyLogo: employee.companyLogo, // base64 puro
         companyIcon: employee.companyIcon  // base64 puro
       }
     };

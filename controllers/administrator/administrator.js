@@ -5,6 +5,7 @@ import bcrypt from "bcrypt";
 const ADMIN_ROLE = "Administrador";
 const FULL_ACCESS = "Full-access";
 const ADMIN_SECTOR = "Administrador";
+const ADMIN_ACTIVE  = true
 
 // Validações auxiliares
 const validateCompanyCreationFields = ({ companyName, adminUsername, adminPassword }) => {
@@ -14,14 +15,14 @@ const validateCompanyCreationFields = ({ companyName, adminUsername, adminPasswo
 // Queries SQL
 const COMPANY_QUERIES = {
   INSERT_COMPANY: `
-    INSERT INTO Companies (name, logo, icon) 
+    INSERT INTO Companies (name, icon) 
     VALUES ($1, $2, $3) 
-    RETURNING id, name, logo, icon
+    RETURNING id, name, icon
   `,
   INSERT_ADMIN: `
-    INSERT INTO Contributor (username, password, role, companyId, access, sector) 
-    VALUES ($1, $2, $3, $4, $5, $6)
-    RETURNING id, username, role, companyId, access, sector
+    INSERT INTO Contributor (username, password, role, companyId, status, active, access, sector) 
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    RETURNING id, username, role, companyId, status, active, access, sector
   `
 };
 
@@ -37,17 +38,19 @@ const RESPONSES = {
 };
 
 // Função principal
-export const createCompanyWhitAdmin = async (companyData) => {
+export const createCompanyWhitAdmin = async (req, res) => {
   try {
+    const companyData = req.body; // <-- CORRETO!
+
     // 1. Valida campos obrigatórios
     if (validateCompanyCreationFields(companyData)) {
-      return RESPONSES.MISSING_FIELDS;
+      return res.status(400).json(RESPONSES.MISSING_FIELDS);
     }
 
     // 2. Cria a empresa
     const { rows: companyRows } = await pool.query(
       COMPANY_QUERIES.INSERT_COMPANY,
-      [companyData.companyName, companyData.logo, companyData.icon]
+      [companyData.companyName, companyData.icon]
     );
 
     const company = companyRows[0];
@@ -63,6 +66,7 @@ export const createCompanyWhitAdmin = async (companyData) => {
         hashedPassword,
         ADMIN_ROLE,
         company.id,
+        ADMIN_ACTIVE,
         FULL_ACCESS,
         ADMIN_SECTOR
       ]
@@ -71,10 +75,11 @@ export const createCompanyWhitAdmin = async (companyData) => {
     const admin = adminRows[0];
 
     // 5. Retorna sucesso
-    return RESPONSES.SUCCESS(company, admin);
+    return res.status(201).json(RESPONSES.SUCCESS(company, admin));
 
   } catch (error) {
     console.error("Erro ao criar empresa e admin:", error);
-    return RESPONSES.ERROR(error.message);
+    return res.status(500).json(RESPONSES.ERROR(error.message));
   }
 };
+

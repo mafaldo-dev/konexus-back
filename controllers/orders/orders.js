@@ -18,7 +18,7 @@ const validateOrderFields = (body) => {
   return !orderItems || !customerId || !totalAmount || !currency || !orderDate || !salesperson || !orderNumber;
 };
 
-// Queries SQL
+// Queries SQL - CORRIGIDAS para usar os nomes corretos das colunas
 const ORDER_QUERIES = {
   INSERT_ORDER: `
     INSERT INTO Orders 
@@ -42,6 +42,8 @@ const ORDER_QUERIES = {
       o.currency,
       o.salesperson,
       o.notes,
+      o.total_volumes AS total_volume,  -- CORRIGIDO: usa alias para o nome esperado pelo código
+      o.total_weight,
       c.id AS customerId,
       c.name AS customerName,
       c.email AS customerEmail,
@@ -76,7 +78,7 @@ const ORDER_QUERIES = {
     JOIN Products p ON oi.productId = p.id
     WHERE oi.orderId = $1
   `,
-   GET_ALL_ORDERS: `
+  GET_ALL_ORDERS: `
     SELECT 
       o.id,
       o.orderDate,
@@ -86,6 +88,8 @@ const ORDER_QUERIES = {
       o.currency,
       o.salesperson,
       o.notes,
+      o.total_volumes AS total_volume,  -- CORRIGIDO: usa alias
+      o.total_weight,
       c.name AS customerName,
       c.email AS customerEmail,
       c.code AS customerCode,
@@ -105,7 +109,7 @@ const ORDER_QUERIES = {
     ORDER BY o.orderDate DESC
     LIMIT $2 OFFSET $3
   `,
-  
+
   COUNT_ALL_ORDERS: `
     SELECT COUNT(*) 
     FROM Orders o
@@ -122,6 +126,8 @@ const ORDER_QUERIES = {
       o.currency,
       o.salesperson,
       o.notes,
+      o.total_volumes AS total_volume,  -- CORRIGIDO: usa alias
+      o.total_weight,
       c.id AS customerId,
       c.name AS customerName,
       c.email AS customerEmail,
@@ -143,6 +149,8 @@ const ORDER_QUERIES = {
       o.currency,
       o.salesperson,
       o.notes,
+      o.total_volumes AS total_volume,  -- CORRIGIDO: usa alias
+      o.total_weight,
       o.customerId,
       o.shippingAddressId,
       o.billingAddressId,
@@ -195,6 +203,17 @@ const ORDER_QUERIES = {
     WHERE id = $2 AND companyId = $3
     RETURNING *
   `,
+
+  // CORRIGIDO: usa os nomes corretos das colunas
+  UPDATE_ORDER_STATUS_WITH_DETAILS: `
+    UPDATE Orders 
+    SET orderStatus = $1, 
+        total_volumes = COALESCE($4, total_volumes),
+        total_weight = COALESCE($5, total_weight)
+    WHERE id = $2 AND companyId = $3
+    RETURNING *
+  `,
+
   DELETE_ORDER: `
     DELETE FROM Orders 
     WHERE id = $1 AND companyId = $2
@@ -250,8 +269,8 @@ const insertOrderItems = async (client, orderId, orderItems) => {
 
 const getFullOrderDetails = async (client, orderId, companyId) => {
   const [orderResult, itemsResult] = await Promise.all([
-    client.query(ORDER_QUERIES.GET_FULL_ORDER, [orderId, companyId]), 
-    client.query(ORDER_QUERIES.GET_ORDER_ITEMS, [orderId]) 
+    client.query(ORDER_QUERIES.GET_FULL_ORDER, [orderId, companyId]),
+    client.query(ORDER_QUERIES.GET_ORDER_ITEMS, [orderId])
   ]);
 
   if (orderResult.rows.length === 0) return null;
@@ -266,6 +285,8 @@ const getFullOrderDetails = async (client, orderId, companyId) => {
     currency: row.currency,
     salesperson: row.salesperson,
     notes: row.notes,
+    totalVolumes: row.total_volume, // Agora vem do alias
+    totalWeight: row.total_weight,
     customer: {
       id: row.customerid,
       name: row.customername,
@@ -347,7 +368,7 @@ export const createOrderSale = async (req, res) => {
     await createKardexMovements(companyId, orderId, insertedItems, client);
     console.log("✅ [ORDER] Kardex processado");
 
-    // 4️⃣ Buscar pedido completo - CORRIGIDO: passar client
+    // 4️⃣ Buscar pedido completo
     const fullOrder = await getFullOrderDetails(client, orderId, companyId);
     console.log("Log fullorder aqui...:", fullOrder);
 
@@ -369,25 +390,24 @@ export const createOrderSale = async (req, res) => {
   }
 };
 
-
 export const getAllOrders = async (req, res) => {
   try {
     const companyId = req.user.companyId;
     const { page = 1, limit = 50 } = req.query;
-    
+
     const offset = (page - 1) * limit;
-    
+
     // Buscar pedidos com paginação
     const result = await pool.query(ORDER_QUERIES.GET_ALL_ORDERS, [
-      companyId, 
-      parseInt(limit), 
+      companyId,
+      parseInt(limit),
       parseInt(offset)
     ]);
-    
+
     // Contar total de pedidos
     const countResult = await pool.query(ORDER_QUERIES.COUNT_ALL_ORDERS, [companyId]);
     const totalOrders = parseInt(countResult.rows[0].count);
-    
+
     const orders = result.rows;
 
     const ordersWithItems = await Promise.all(
@@ -402,6 +422,8 @@ export const getAllOrders = async (req, res) => {
           totalAmount: row.totalamount,
           currency: row.currency,
           salesperson: row.salesperson,
+          totalVolumes: row.total_volume, // Agora vem do alias
+          totalWeight: row.total_weight,
           customer: {
             name: row.customername,
             email: row.customeremail,
@@ -443,13 +465,12 @@ export const getAllOrders = async (req, res) => {
   }
 };
 
-
 export const getOrderById = async (req, res) => {
   const { id } = req.params;
-  const client = await pool.connect(); // ← Obter client
+  const client = await pool.connect();
 
   try {
-    const order = await getFullOrderDetails(client, id, req.user.companyId); // ← Passar client
+    const order = await getFullOrderDetails(client, id, req.user.companyId);
 
     if (!order) return res.status(404).json(RESPONSES.ORDER_NOT_FOUND);
 
@@ -458,12 +479,13 @@ export const getOrderById = async (req, res) => {
     console.error("Erro ao buscar pedido:", err);
     res.status(500).json(RESPONSES.ERROR);
   } finally {
-    client.release(); // ← Liberar client
+    client.release();
   }
 };
+
 export const updateOrderStatus = async (req, res) => {
   const { id } = req.params;
-  const { orderStatus } = req.body;
+  const { orderStatus, totalVolumes, totalWeight } = req.body;
 
   if (!orderStatus) {
     return res.status(400).json({ Info: "Status do pedido é obrigatório!" });
@@ -478,9 +500,16 @@ export const updateOrderStatus = async (req, res) => {
   }
 
   try {
-    const result = await pool.query(ORDER_QUERIES.UPDATE_ORDER_STATUS, [
-      orderStatus, id, req.user.companyId
-    ]);
+    // Se estiver atualizando para "shipped" e houver volumes/peso, use a query com detalhes
+    let query = ORDER_QUERIES.UPDATE_ORDER_STATUS;
+    let params = [orderStatus, id, req.user.companyId];
+
+    if (orderStatus === ORDER_STATUS.SHIPPED && (totalVolumes !== undefined || totalWeight !== undefined)) {
+      query = ORDER_QUERIES.UPDATE_ORDER_STATUS_WITH_DETAILS;
+      params = [orderStatus, id, req.user.companyId, totalVolumes, totalWeight];
+    }
+
+    const result = await pool.query(query, params);
 
     if (result.rows.length === 0) return res.status(404).json(RESPONSES.ORDER_NOT_FOUND);
 
@@ -490,6 +519,8 @@ export const updateOrderStatus = async (req, res) => {
     res.status(500).json(RESPONSES.ERROR);
   }
 };
+
+// ... (as outras funções permanecem iguais, apenas atualizei as queries)
 
 export const deleteOrder = async (req, res) => {
   const { id } = req.params;
@@ -620,31 +651,32 @@ export const getCustomers = async (req, res) => {
     res.status(500).json(RESPONSES.ERROR);
   }
 };
+
 export const getOrderForEdit = async (req, res) => {
   const { id } = req.params;
   const companyId = req.user.companyId;
 
   try {
     console.log("🔍 [ORDER EDIT] Buscando pedido para edição ID:", id);
-    
+
     // Primeiro verifica se o pedido pode ser editado
     const canEditResult = await pool.query(ORDER_QUERIES.CAN_EDIT_ORDER, [id, companyId]);
-    
+
     if (canEditResult.rows.length === 0) {
-      return res.status(403).json({ 
-        Error: "Este pedido não pode ser editado. Apenas pedidos com status 'Pendente' ou 'Estornado' podem ser modificados." 
+      return res.status(403).json({
+        Error: "Este pedido não pode ser editado. Apenas pedidos com status 'Pendente' ou 'Estornado' podem ser modificados."
       });
     }
 
     // Busca os dados completos do pedido
     const orderResult = await pool.query(ORDER_QUERIES.GET_ORDER_FOR_EDIT, [id, companyId]);
-    
+
     if (orderResult.rows.length === 0) {
       return res.status(404).json(RESPONSES.ORDER_NOT_FOUND);
     }
 
     const order = orderResult.rows[0];
-    
+
     // Busca os itens do pedido
     const itemsResult = await pool.query(ORDER_QUERIES.GET_ORDER_ITEMS, [id]);
 
@@ -657,6 +689,8 @@ export const getOrderForEdit = async (req, res) => {
       currency: order.currency,
       salesperson: order.salesperson,
       notes: order.notes,
+      totalVolumes: order.total_volume, // Agora vem do alias
+      totalWeight: order.total_weight,
       customerId: order.customerid,
       shippingAddressId: order.shippingaddressid,
       billingAddressId: order.billingaddressid,
@@ -704,7 +738,7 @@ export const getOrderForEdit = async (req, res) => {
 export const updateOrder = async (req, res) => {
   const { id } = req.params;
   const companyId = req.user.companyId;
-  
+
   const {
     orderDate,
     customerId,
@@ -721,16 +755,16 @@ export const updateOrder = async (req, res) => {
 
   try {
     console.log("🔍 [ORDER UPDATE] Iniciando atualização do pedido ID:", id);
-    
+
     await client.query('BEGIN');
 
     // 1️⃣ Verificar se o pedido pode ser editado
     const canEditResult = await client.query(ORDER_QUERIES.CAN_EDIT_ORDER, [id, companyId]);
-    
+
     if (canEditResult.rows.length === 0) {
       await client.query('ROLLBACK');
-      return res.status(403).json({ 
-        Error: "Este pedido não pode ser editado. Apenas pedidos com status 'Pendente' ou 'Estornado' podem ser modificados." 
+      return res.status(403).json({
+        Error: "Este pedido não pode ser editado. Apenas pedidos com status 'Pendente' ou 'Estornado' podem ser modificados."
       });
     }
 
@@ -857,7 +891,6 @@ export const cancelOrder = async (req, res) => {
     client.release();
   }
 };
-
 
 // Exportar constantes
 export { ORDER_STATUS };
