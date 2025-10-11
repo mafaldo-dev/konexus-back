@@ -8,7 +8,8 @@ import {
   getCustomers,
   getOrderForEdit,
   updateOrder,
-  getLastOrderNumber
+  getLastOrderNumber,
+  cancelOrder
 } from '../controllers/orders/orders.js';
 import { authMiddleware } from '../middlewares/middleware.js';
 
@@ -29,6 +30,8 @@ router.get('/:id', authMiddleware, getOrderById);             // Esta vem DEPOIS
 
 router.put('/:id', authMiddleware, updateOrder);
 router.put('/:id/status', authMiddleware, updateOrderStatus);
+
+router.patch('/:id/cancel', authMiddleware, cancelOrder);
 
 router.delete('/:id', authMiddleware, deleteOrder);
 

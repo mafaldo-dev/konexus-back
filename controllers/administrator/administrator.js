@@ -2,7 +2,9 @@ import pool from "../../database/conection.js";
 import bcrypt from "bcrypt";
 
 // Constantes
-const ADMIN_ROLE = 'Administrador';
+const ADMIN_ROLE = "Administrador";
+const FULL_ACCESS = "Full-access";
+const ADMIN_SECTOR = "Administrador";
 
 // Validações auxiliares
 const validateCompanyCreationFields = ({ companyName, adminUsername, adminPassword }) => {
@@ -11,50 +13,68 @@ const validateCompanyCreationFields = ({ companyName, adminUsername, adminPasswo
 
 // Queries SQL
 const COMPANY_QUERIES = {
-  INSERT: `
-    INSERT INTO Companies (name)
-    VALUES ($1)
-    RETURNING *
+  INSERT_COMPANY: `
+    INSERT INTO Companies (name, logo, icon) 
+    VALUES ($1, $2, $3) 
+    RETURNING id, name, logo, icon
   `,
   INSERT_ADMIN: `
-    INSERT INTO Employees (username, password, role, companyId)
-    VALUES ($1, $2, $3, $4)
-    RETURNING username, role, companyId
+    INSERT INTO Contributor (username, password, role, companyId, access, sector) 
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING id, username, role, companyId, access, sector
   `
 };
 
 // Respostas padronizadas
 const RESPONSES = {
-  MISSING_FIELDS: { Info: "Todos os campos são obrigatórios." },
+  MISSING_FIELDS: { error: "Todos os campos são obrigatórios." },
   SUCCESS: (company, admin) => ({
-    Info: "Empresa criada com sucesso e usuário admin adicionado!",
-    company: { id: company.id, name: company.name },
-    admin: admin
+    info: "Empresa criada com sucesso e usuário admin adicionado!",
+    company,
+    admin
   }),
-  ERROR: { Error: "Erro interno do servidor!" }
+  ERROR: (error) => ({ error: "Erro interno do servidor: " + error })
 };
 
-export const createCompanyWithAdmin = async (req, res) => {
-  const { companyName, adminUsername, adminPassword } = req.body;
-
-  if (validateCompanyCreationFields(req.body)) {
-    return res.status(400).json(RESPONSES.MISSING_FIELDS);
-  }
-
+// Função principal
+export const createCompanyWhitAdmin = async (companyData) => {
   try {
-    // Criar a empresa
-    const companyResult = await pool.query(COMPANY_QUERIES.INSERT, [companyName]);
-    const company = companyResult.rows[0];
+    // 1. Valida campos obrigatórios
+    if (validateCompanyCreationFields(companyData)) {
+      return RESPONSES.MISSING_FIELDS;
+    }
 
-    // Criar usuário administrador
-    const hashedPassword = await bcrypt.hash(adminPassword, 10);
-    const adminValues = [adminUsername, hashedPassword, ADMIN_ROLE, company.id];
-    const adminResult = await pool.query(COMPANY_QUERIES.INSERT_ADMIN, adminValues);
+    // 2. Cria a empresa
+    const { rows: companyRows } = await pool.query(
+      COMPANY_QUERIES.INSERT_COMPANY,
+      [companyData.companyName, companyData.logo, companyData.icon]
+    );
 
-    res.status(201).json(RESPONSES.SUCCESS(company, adminResult.rows[0]));
+    const company = companyRows[0];
 
-  } catch (err) {
-    console.error("Erro ao criar empresa com admin:", err);
-    res.status(500).json(RESPONSES.ERROR);
+    // 3. Criptografa a senha do admin
+    const hashedPassword = await bcrypt.hash(companyData.adminPassword, 10);
+
+    // 4. Cria o usuário administrador vinculado à empresa
+    const { rows: adminRows } = await pool.query(
+      COMPANY_QUERIES.INSERT_ADMIN,
+      [
+        companyData.adminUsername,
+        hashedPassword,
+        ADMIN_ROLE,
+        company.id,
+        FULL_ACCESS,
+        ADMIN_SECTOR
+      ]
+    );
+
+    const admin = adminRows[0];
+
+    // 5. Retorna sucesso
+    return RESPONSES.SUCCESS(company, admin);
+
+  } catch (error) {
+    console.error("Erro ao criar empresa e admin:", error);
+    return RESPONSES.ERROR(error.message);
   }
 };

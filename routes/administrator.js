@@ -1,9 +1,9 @@
 import { Router } from "express";
-import { authMiddleware } from "../middlewares/middleware.js";
-import { createCompanyWithAdmin } from "../controllers/administrator/administrator.js";
+
+import { createCompanyWhitAdmin } from "../controllers/administrator/administrator.js";
 
 const router = Router()
 
-router.post("/", createCompanyWithAdmin)
+router.post("/create-company", createCompanyWhitAdmin)
 
 export default router

@@ -288,7 +288,6 @@ const getFullOrderDetails = async (client, orderId, companyId) => {
       zip: row.billingzip
     },
     orderItems: itemsResult.rows
-    // ← Remover notes duplicado
   };
 
   return order;
@@ -787,6 +786,78 @@ export const updateOrder = async (req, res) => {
     client.release();
   }
 };
+
+export const cancelOrder = async (req, res) => {
+  const { id } = req.params;
+  const companyId = req.user.companyId;
+  const client = await pool.connect();
+
+  try {
+    console.log(`🛑 [ORDER CANCEL] Iniciando cancelamento do pedido ID: ${id}`);
+
+    await client.query("BEGIN");
+
+    // 1️⃣ Verifica se o pedido existe e pertence à empresa
+    const orderResult = await client.query(ORDER_QUERIES.GET_ORDER_BY_ID, [id, companyId]);
+    if (orderResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json(RESPONSES.ORDER_NOT_FOUND);
+    }
+
+    const order = orderResult.rows[0];
+    if (order.orderstatus === ORDER_STATUS.CANCELLED) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ Info: "O pedido já está cancelado!" });
+    }
+
+    // 2️⃣ Busca os itens do pedido
+    const itemsResult = await client.query(ORDER_QUERIES.GET_ORDER_ITEMS, [id]);
+    const items = itemsResult.rows;
+
+    if (items.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ Info: "Pedido não possui itens para cancelamento!" });
+    }
+
+    // 3️⃣ Reverte estoque: adiciona novamente a quantidade de cada produto
+    for (const item of items) {
+      await client.query(
+        `UPDATE Products 
+         SET stock = stock + $1 
+         WHERE id = $2 AND companyId = $3`,
+        [item.quantity, item.productid, companyId]
+      );
+    }
+
+    console.log("✅ [ORDER CANCEL] Estoque revertido com sucesso!");
+
+    // 4️⃣ Remove movimentações antigas no Kardex
+    await deleteKardexByOrderId(id, client);
+    console.log("✅ [ORDER CANCEL] Movimentações do Kardex removidas.");
+
+    // 5️⃣ Atualiza o status do pedido
+    await client.query(ORDER_QUERIES.UPDATE_ORDER_STATUS, [
+      ORDER_STATUS.CANCELLED, id, companyId
+    ]);
+
+    await client.query("COMMIT");
+
+    console.log(`✅ [ORDER CANCEL] Pedido ${id} cancelado com sucesso!`);
+
+    res.status(200).json({
+      Info: "Pedido cancelado com sucesso e estoque revertido.",
+      orderId: id
+    });
+
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("❌ [ORDER CANCEL] Erro ao cancelar pedido:", err);
+    res.status(500).json(RESPONSES.ERROR);
+  } finally {
+    client.release();
+  }
+};
+
 
 // Exportar constantes
 export { ORDER_STATUS };
