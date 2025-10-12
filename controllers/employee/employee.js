@@ -53,7 +53,7 @@ export const createEmployeeAccess = async (req, res) => {
     const response = await pool.query(query, values);
     await pool.query('COMMIT');
 
-    res.status(201).json({ 
+    res.status(201).json({
       Info: "Colaborador adicionado à base de dados",
       employee: {
         user: username,
@@ -170,7 +170,9 @@ export const updateEmployeeStatus = async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  if (!status) return res.status(400).json({ Info: "Status é obrigatório!" });
+  if (status === undefined || status === null) {
+    return res.status(400).json({ Info: "Status é obrigatório!" });
+  }
 
   const statusBoolean = mapStatusToBoolean(status);
   if (statusBoolean === undefined) return res.status(400).json({ Info: "Status inválido! Use: Ativo, Ausente ou Inativo" });

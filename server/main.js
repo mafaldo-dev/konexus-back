@@ -9,6 +9,7 @@ import supplierRouter from "../routes/supplier.js"
 import customerRouter from "../routes/customer.js"
 import ordersRouter from "../routes/order.js"
 import kardexRouter from '../routes/kardex.js'
+import purchseRouter from "../routes/purchase.js"
 
 import dotenv from "dotenv"
 
@@ -49,6 +50,10 @@ app.use("/customers", customerRouter)
 //ORDERS ROUTES
 app.use("/orders", ordersRouter)
 
+//PURCHASE ROUTES
+app.use("/purchase", purchseRouter)
+
+//KARDEX ROUTER
 app.use("/kardex", kardexRouter)
 
 
