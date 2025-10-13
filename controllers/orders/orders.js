@@ -285,7 +285,7 @@ const getFullOrderDetails = async (client, orderId, companyId) => {
     currency: row.currency,
     salesperson: row.salesperson,
     notes: row.notes,
-    totalVolumes: row.total_volume, // Agora vem do alias
+    totalVolumes: row.total_volume,
     totalWeight: row.total_weight,
     customer: {
       id: row.customerid,

@@ -1,22 +1,18 @@
 import { authMiddleware } from "../middlewares/middleware.js"
 import { Router } from "express"
 
-import { purchaseOrderBuy, getAllPurchaseOrders, updatePurchaseOrder, getPurchaseOrderById, deletePurchaseOrder } from "../controllers/purchase-orders/purchase.js"
+import { purchaseOrderBuy, getAllPurchaseOrders, updatePurchaseOrder, getPurchaseOrderByNumber, deletePurchaseOrder } from "../controllers/purchase-orders/purchase.js"
 
 const router =  Router()
 
-router.post("/create", (req, res, next) => {
-  console.log("🎯 ROTA /create ATINGIDA!", new Date().toISOString());
-  console.log("📦 Body recebido:", req.body);
-  next();
-}, authMiddleware, purchaseOrderBuy)
+router.post("/create", authMiddleware, purchaseOrderBuy)
 
-router.get("/all", authMiddleware,getAllPurchaseOrders)
-router.get("/order/:id", authMiddleware, getPurchaseOrderById)
+router.get("/all", authMiddleware, getAllPurchaseOrders)
+router.get("/:orderNumber", authMiddleware, getPurchaseOrderByNumber)
 
-router.put("/order/:id", authMiddleware, updatePurchaseOrder)
+router.put("/:id", authMiddleware, updatePurchaseOrder)
 
-router.delete("/order/:id", authMiddleware, deletePurchaseOrder)
+router.delete("/:id", authMiddleware, deletePurchaseOrder)
 
 
 export default router

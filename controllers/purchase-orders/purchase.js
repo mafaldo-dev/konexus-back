@@ -60,7 +60,17 @@ const Q = {
   DELETE_ORDER: `
     DELETE FROM OrdersRequest
     WHERE id = $1 AND companyId = $2
-    RETURNING id`
+    RETURNING id`,
+
+  GET_ORDER_BY_NUMBER: `
+    SELECT
+      o.id, o.orderNumber, o.orderDate, o.orderStatus, o.totalCost, o.currency, o.notes, o.buyer,
+      s.id AS supplierId, s.name AS supplierName, s.email AS supplierEmail, s.phone AS supplierPhone
+    FROM OrdersRequest o
+    JOIN Suppliers s ON o.supplierId = s.id
+    WHERE o.orderNumber = $1 AND o.companyId = $2
+`
+
 };
 
 // ===================== HELPERS ===================== //
@@ -170,13 +180,6 @@ const executeTransaction = async (callback) => {
 
 // CRIAR PEDIDO
 export const purchaseOrderBuy = async (req, res) => {
-  console.log("🚨 FUNÇÃO CHAMADA!", new Date().toISOString());
-  console.log("🔌 Pool stats:", {
-    total: pool.totalCount,
-    idle: pool.idleCount,
-    waiting: pool.waitingCount
-  });
-
   const {
     orderNumber,
     supplierId,
@@ -188,21 +191,6 @@ export const purchaseOrderBuy = async (req, res) => {
     orderStatus = ORDER_STATUS.PENDING,
     buyer
   } = req.body;
-
-  // ===================== LOGS DE DEBUG ===================== //
-  console.log("===========================================");
-  console.log("📥 REQUISIÇÃO RECEBIDA EM /purchase/create");
-  console.log("🏢 CompanyId (token):", req.user?.companyId);
-  console.log("📦 BODY ORIGINAL:", req.body);
-  console.log("📊 BODY JSON:", JSON.stringify(req.body, null, 2));
-  console.log("🔎 Tipos:");
-  console.log("   orderNumber:", typeof orderNumber);
-  console.log("   supplierId:", typeof supplierId, "->", supplierId);
-  console.log("   orderItems:", Array.isArray(orderItems) ? `Array (${orderItems.length})` : typeof orderItems);
-  console.log("   totalCost:", typeof totalCost);
-  console.log("   orderDate:", typeof orderDate);
-  console.log("   buyer:", typeof buyer);
-  console.log("===========================================");
 
   // ===================== VALIDAÇÕES ===================== //
   if (!orderNumber || !supplierId || !orderItems || !totalCost || !currency || !orderDate || !buyer) {
@@ -248,8 +236,7 @@ export const purchaseOrderBuy = async (req, res) => {
   // ===================== TRANSAÇÃO ===================== //
   try {
     const fullOrder = await executeTransaction(async (client) => {
-      // 1️⃣ Validar supplier
-      console.log(`🔍 Validando supplier ${numericSupplierId} (empresa ${companyId})...`);
+
       const supplierCheck = await client.query(
         "SELECT id, name FROM Suppliers WHERE id = $1 AND companyId = $2",
         [numericSupplierId, companyId]
@@ -259,10 +246,6 @@ export const purchaseOrderBuy = async (req, res) => {
         throw new Error(`SUPPLIER_NOT_FOUND: Fornecedor ${numericSupplierId} não encontrado para sua empresa`);
       }
 
-      console.log("✅ Supplier válido:", supplierCheck.rows[0].name);
-
-      // 2️⃣ Validar número do pedido
-      console.log(`🔍 Validando número do pedido '${orderNumber}'...`);
       const orderNumberCheck = await client.query(
         "SELECT id FROM OrdersRequest WHERE companyId = $1 AND orderNumber = $2",
         [companyId, orderNumber]
@@ -272,10 +255,6 @@ export const purchaseOrderBuy = async (req, res) => {
         throw new Error(`ORDER_NUMBER_EXISTS: Já existe um pedido com o número ${orderNumber}`);
       }
 
-      console.log("✅ Número de pedido disponível");
-
-      // 3️⃣ Inserir pedido
-      console.log("📝 Inserindo pedido principal...");
       const orderRes = await client.query(Q.INSERT_ORDER, [
         companyId,
         numericSupplierId,
@@ -288,16 +267,10 @@ export const purchaseOrderBuy = async (req, res) => {
         buyer
       ]);
       const orderId = orderRes.rows[0].id;
-      console.log("✅ Pedido criado com ID:", orderId);
 
-      // 4️⃣ Inserir itens
-      console.log("📦 Inserindo itens...");
       await insertOrderItems(client, orderId, orderItems, companyId);
-      console.log("✅ Itens inseridos com sucesso!");
 
-      // 5️⃣ Buscar detalhes completos
       const order = await getOrderDetails(client, orderId, companyId);
-      console.log("🎉 Pedido criado com sucesso!");
       return order;
     });
 
@@ -346,11 +319,51 @@ export const getAllPurchaseOrders = async (req, res) => {
   }
 };
 
-// ✅ BUSCAR POR ID - CORRIGIDO
-export const getPurchaseOrderById = async (req, res) => {
+// ✅ BUSCAR POR ID - CORRIGIDO PARA RETORNAR NO FORMATO PurchaseOrder
+export const getPurchaseOrderByNumber = async (req, res) => {
   try {
+    const orderNumber = req.params.orderNumber;
     const order = await executeTransaction(async (client) => {
-      return await getOrderDetails(client, req.params.id, req.user.companyId);
+      const orderRes = await client.query(Q.GET_ORDER_BY_NUMBER, [orderNumber, req.user.companyId]);
+      if (!orderRes.rows[0]) return null;
+
+      const itemsRes = await client.query(Q.GET_ORDER_ITEMS, [orderRes.rows[0].id]);
+
+      const o = orderRes.rows[0];
+      
+      // RETORNO NO FORMATO EXATO DA INTERFACE PurchaseOrder
+      return {
+        id: o.id,
+        orderNumber: o.ordernumber,
+        supplierId: o.supplierid.toString(), // ✅ Converte para string como na interface
+        orderDate: o.orderdate,
+        orderStatus: o.orderstatus,
+        totalCost: parseFloat(o.totalcost), // ✅ Garante que é number
+        currency: o.currency,
+        notes: o.notes,
+        companyId: req.user.companyId,
+        orderItems: itemsRes.rows.map(item => ({
+          productid: item.productid.toString(), // ✅ Converte para string
+          quantity: item.quantity,
+          cost: parseFloat(item.unitcost), // ✅ Garante que é number
+          productname: item.productname,
+          productcode: item.productcode,
+          productlocation: item.productlocation
+        })),
+        // Campos opcionais para UI
+        supplier: {
+          id: o.supplierid.toString(),
+          name: o.suppliername,
+          email: o.supplieremail,
+          phone: o.supplierphone
+        },
+        requestingCompany: {
+          id: req.user.companyId,
+          name: req.user.companyName || "Empresa", // ✅ Ajuste conforme seu auth
+          buyer: o.buyer
+        },
+        createdAt: o.createdat || new Date().toISOString()
+      };
     });
 
     if (!order) {
