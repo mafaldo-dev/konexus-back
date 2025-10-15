@@ -26,22 +26,26 @@ const KARDEX_QUERIES = {
     WHERE orderId = $1
   `,
   GET_KARDEX_BY_PRODUCT: `
-    SELECT 
-      k.id,
-      k.movementType,
-      k.quantity,
-      k.unitPrice,
-      k.movementDate,
-      k.orderId,
-      o.orderNumber,
-      p.name as productName,
-      p.code as productCode
-    FROM Kardex k
-    JOIN Products p ON k.productId = p.id
-    LEFT JOIN Orders o ON k.orderId = o.id
-    WHERE k.productId = $1 AND k.companyId = $2
-    ORDER BY k.movementDate DESC
-  `,
+  SELECT
+    k.id,
+    k.movementType,
+    k.quantity,
+    k.unitPrice,
+    k.movementDate,
+    k.orderId,
+    i.invoice_number as invoiceNumber, 
+    i.issue_date as invoiceDate,           
+    i.status as invoiceStatus,            
+    po.ordernumber as purchaseOrderNumber, 
+    p.name as productName,
+    p.code as productCode
+  FROM Kardex k
+  JOIN Products p ON k.productId = p.id
+  LEFT JOIN Invoices i ON k.orderId = i.order_id AND i.companyId = k.companyId  
+  LEFT JOIN OrdersRequest po ON k.orderId = po.id  
+  WHERE k.productId = $1 AND k.companyId = $2
+  ORDER BY k.movementDate DESC
+`,
   GET_KARDEX_BY_ORDER: `
     SELECT 
       k.id,
@@ -58,7 +62,6 @@ const KARDEX_QUERIES = {
   `
 };
 
-// Respostas padronizadas
 const KARDEX_RESPONSES = {
   CREATE_SUCCESS: (kardex) => ({
     Info: "Movimentação registrada no Kardex!",
@@ -77,45 +80,29 @@ const KARDEX_RESPONSES = {
 
 // ====================== FUNÇÕES ====================== //
 
-// Cria movimentações do Kardex para uma ordem
 export const createKardexMovements = async (companyId, orderId, insertedItems, client = null) => {
-  const db = client || pool; // ← CORREÇÃO: mudar "conect" para "pool"
+  const db = client || pool;
 
   try {
-    console.log("🔍 [KARDEX] Iniciando processamento...");
-
     const kardexPromises = insertedItems.map(async (result) => {
       const item = result.rows[0];
 
-      console.log("🔍 [KARDEX] Item a processar:", {
-        productId: item.productid,
-        quantity: item.quantity,
-        unitPrice: item.unitprice
-      });
-
-      // ✅ Estoque antes
       const stockBefore = await db.query(
         'SELECT stock FROM Products WHERE id = $1 AND companyId = $2',
         [item.productid, companyId]
       );
-      console.log("🔍 [KARDEX] Estoque ANTES:", stockBefore.rows[0]?.stock);
 
-      // ✅ Atualiza estoque
       const stockUpdate = await db.query(KARDEX_QUERIES.UPDATE_PRODUCT_STOCK, [
         item.quantity,
         item.productid,
         companyId
       ]);
-      console.log("🔍 [KARDEX] Resultado da atualização:", stockUpdate.rows[0]);
 
-      // ✅ Estoque depois
       const stockAfter = await db.query(
         'SELECT stock FROM Products WHERE id = $1 AND companyId = $2',
         [item.productid, companyId]
       );
-      console.log("🔍 [KARDEX] Estoque DEPOIS:", stockAfter.rows[0]?.stock);
 
-      // ✅ Inserir registro no Kardex
       const kardexResult = await db.query(KARDEX_QUERIES.INSERT_KARDEX, [
         companyId,
         item.productid,
@@ -124,7 +111,6 @@ export const createKardexMovements = async (companyId, orderId, insertedItems, c
         item.quantity,
         item.unitprice
       ]);
-      console.log("✅ [KARDEX] Movimentação registrada");
 
       return {
         stockBefore: stockBefore.rows[0],
@@ -156,7 +142,6 @@ export const deleteKardexByOrderId = async (orderId, client = null) => {
   }
 };
 
-// Buscar Kardex por produto
 export const getKardexByProduct = async (req, res) => {
   const { productId } = req.params;
   const companyId = req.user.companyId;
@@ -170,7 +155,6 @@ export const getKardexByProduct = async (req, res) => {
   }
 };
 
-// Buscar Kardex por pedido
 export const getKardexByOrder = async (req, res) => {
   const { orderId } = req.params;
   const companyId = req.user.companyId;
@@ -224,7 +208,7 @@ export const createKardexMovement = async (req, res) => {
 
     // Atualizar estoque do produto
     const stockMultiplier = movementType === MOVEMENT_TYPES.ENTRADA ? 1 : -1;
-    await pool.query(KARDEX_QUERIES.UPDATE_PRODUCT_STOCK, [ // ← CORREÇÃO: mudar "conect" para "pool"
+    await pool.query(KARDEX_QUERIES.UPDATE_PRODUCT_STOCK, [
       quantity * stockMultiplier,
       productId,
       companyId

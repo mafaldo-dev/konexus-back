@@ -339,7 +339,6 @@ export const createOrderSale = async (req, res) => {
   const client = await pool.connect();
 
   try {
-    console.log("🔍 [ORDER] Iniciando transação...");
     await client.query('BEGIN');
 
     // 1️⃣ Criar pedido
@@ -358,27 +357,19 @@ export const createOrderSale = async (req, res) => {
     ]);
 
     const orderId = orderResult.rows[0].id;
-    console.log("✅ [ORDER] Pedido criado ID:", orderId);
 
-    // 2️⃣ Inserir itens
+ 
     const insertedItems = await insertOrderItems(client, orderId, orderItems);
-    console.log("✅ [ORDER] Itens inseridos:", insertedItems.length);
 
-    // 3️⃣ Processar Kardex
     await createKardexMovements(companyId, orderId, insertedItems, client);
-    console.log("✅ [ORDER] Kardex processado");
 
-    // 4️⃣ Buscar pedido completo
     const fullOrder = await getFullOrderDetails(client, orderId, companyId);
-    console.log("Log fullorder aqui...:", fullOrder);
 
     if (!fullOrder) {
       throw new Error("Falha ao recuperar detalhes do pedido após criação");
     }
 
     await client.query('COMMIT');
-    console.log("✅ [ORDER] COMMIT realizado!");
-
     res.status(201).json(RESPONSES.CREATE_SUCCESS(fullOrder));
 
   } catch (err) {
@@ -422,7 +413,7 @@ export const getAllOrders = async (req, res) => {
           totalAmount: row.totalamount,
           currency: row.currency,
           salesperson: row.salesperson,
-          totalVolumes: row.total_volume, // Agora vem do alias
+          totalVolumes: row.total_volume,
           totalWeight: row.total_weight,
           customer: {
             name: row.customername,
@@ -519,8 +510,6 @@ export const updateOrderStatus = async (req, res) => {
     res.status(500).json(RESPONSES.ERROR);
   }
 };
-
-// ... (as outras funções permanecem iguais, apenas atualizei as queries)
 
 export const deleteOrder = async (req, res) => {
   const { id } = req.params;
