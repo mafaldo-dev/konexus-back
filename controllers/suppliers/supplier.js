@@ -30,11 +30,15 @@ const buildUpdateValues = (updateFields, existingSupplier) => {
 
 const SUPPLIER_QUERIES = {
   CHECK_CODE: `SELECT code FROM Suppliers WHERE code=$1 AND companyId=$2`,
+  
   INSERT: `INSERT INTO Suppliers 
             (name, code, trading_name, email, phone, national_register_code, active, companyId)
             VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+  
   SELECT_ALL: `SELECT * FROM Suppliers WHERE companyId=$1`,
+  
   SELECT_BY_ID: `SELECT * FROM Suppliers WHERE id=$1 AND companyId=$2`,
+  
   UPDATE: `UPDATE Suppliers
            SET name=$1, code=$2, trading_name=$3, email=$4, phone=$5, national_register_code=$6, active=$7
            WHERE id=$8 AND companyId=$9

@@ -42,7 +42,7 @@ const ORDER_QUERIES = {
       o.currency,
       o.salesperson,
       o.notes,
-      o.total_volumes AS total_volume,  -- CORRIGIDO: usa alias para o nome esperado pelo código
+      o.total_volumes AS total_volume,
       o.total_weight,
       c.id AS customerId,
       c.name AS customerName,
@@ -70,6 +70,7 @@ const ORDER_QUERIES = {
       oi.productId, 
       p.name AS productName, 
       p.code AS productCode,
+      p.brand AS productBrand,
       oi.quantity, 
       oi.unitPrice,
       oi.location,
@@ -88,7 +89,7 @@ const ORDER_QUERIES = {
       o.currency,
       o.salesperson,
       o.notes,
-      o.total_volumes AS total_volume,  -- CORRIGIDO: usa alias
+      o.total_volumes AS total_volume,
       o.total_weight,
       c.name AS customerName,
       c.email AS customerEmail,
@@ -126,7 +127,7 @@ const ORDER_QUERIES = {
       o.currency,
       o.salesperson,
       o.notes,
-      o.total_volumes AS total_volume,  -- CORRIGIDO: usa alias
+      o.total_volumes AS total_volume,  
       o.total_weight,
       c.id AS customerId,
       c.name AS customerName,
@@ -149,7 +150,7 @@ const ORDER_QUERIES = {
       o.currency,
       o.salesperson,
       o.notes,
-      o.total_volumes AS total_volume,  -- CORRIGIDO: usa alias
+      o.total_volumes AS total_volume,
       o.total_weight,
       o.customerId,
       o.shippingAddressId,
