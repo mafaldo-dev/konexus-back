@@ -3,6 +3,13 @@ import bcrypt from "bcrypt";
 import pool from "../../database/conection.js";
 import dotenv from "dotenv";
 
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 dotenv.config({ path: "../.env" });
 
 const JWT_SECRET = process.env.JWT_SECRET || "";
@@ -14,13 +21,12 @@ const JWT_EXPIRES_IN = "6h";
 export const login = async (req, res) => {
   const { username, password } = req.body;
 
-  // Validação básica
   if (!username || !password) {
     return res.status(403).json({ Info: "Acesso negado: username ou senha inválidos!" });
   }
 
   try {
-    // Query SIMPLES - apenas os campos que existem na tabela Administrator
+
     const query = `
       SELECT id, username, password 
       FROM Administrator 
@@ -35,22 +41,19 @@ export const login = async (req, res) => {
 
     const admin = rows[0];
 
-    // Verifica senha DIRECTAMENTE (sem bcrypt)
     if (password !== admin.password) {
       return res.status(401).json({ Info: "Usuário ou senha inválidos!" });
     }
 
-    // Payload do token - APENAS dados do administrador
     const tokenPayload = {
       id: admin.id,
       username: admin.username,
-      role: "Administrator", // Fixo para administradores
+      role: "Administrator", 
       userType: "Administrator"
     };
 
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
     
-    // Resposta SIMPLES
     const response = {
       token,
       user: {
@@ -60,8 +63,6 @@ export const login = async (req, res) => {
         userType: "Administrator"
       }
     };
-
-    console.log("✅ Login ADMIN bem-sucedido:", admin.username);
     res.json(response);
 
   } catch (err) {
@@ -76,13 +77,11 @@ export const login = async (req, res) => {
 export const employeeLogin = async (req, res) => {
   const { username, password } = req.body;
 
-  // Validação básica
   if (!username || !password) {
     return res.status(403).json({ Info: "Acesso negado: username ou senha inválidos!" });
   }
 
   try {
-    // ✅ QUERY COM JOIN - buscando dados da empresa também
     const query = `
       SELECT 
         c.id, 
@@ -95,7 +94,10 @@ export const employeeLogin = async (req, res) => {
         c.access, 
         c.sector,
         comp.name AS "companyName",
-        comp.icon AS "companyIcon"
+        comp.icon AS "companyIcon",
+        comp.email AS "companyEmail",
+        comp.phone AS "companyPhone",
+        comp.cnpj AS "companyCnpj"
       FROM Contributor c
       LEFT JOIN companies comp ON c.companyId = comp.id
       WHERE c.username = $1
@@ -109,18 +111,44 @@ export const employeeLogin = async (req, res) => {
 
     const employee = rows[0];
 
-    // Verifica senha
     const validPassword = await bcrypt.compare(password, employee.password);
     if (!validPassword) {
       return res.status(401).json({ Info: "Usuário ou senha inválidos!" });
     }
 
-    // Verifica se está ativo
     if (!employee.active) {
       return res.status(403).json({ Info: "Colaborador inativo!" });
     }
 
-    // Payload do token - TODOS os dados do colaborador
+    let companyIconBase64 = null;
+    let companyIconUrl = null;
+
+    if (employee.companyIcon) {      
+
+      const logoPath = path.join(__dirname, '../../uploads/logos', employee.companyIcon);
+      
+      if (fs.existsSync(logoPath)) {
+        
+        try {
+          const buffer = fs.readFileSync(logoPath);
+          const ext = path.extname(employee.companyIcon).toLowerCase().replace(".", "") || 'png';
+          companyIconBase64 = `data:image/${ext};base64,${buffer.toString('base64')}`;
+          
+          const appBaseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+          companyIconUrl = `${appBaseUrl}/uploads/logos/${employee.companyIcon}`;
+          
+        } catch (fileError) {
+          console.error("❌ Erro ao converter logo:", fileError);
+        }
+      } else {
+        
+        const uploadsDir = path.join(__dirname, '../../uploads/logos');
+        if (fs.existsSync(uploadsDir)) {
+          const files = fs.readdirSync(uploadsDir);
+        }
+      }
+    }
+
     const tokenPayload = {
       id: employee.id,
       username: employee.username,
@@ -130,12 +158,11 @@ export const employeeLogin = async (req, res) => {
       status: employee.status,
       access: employee.access,
       sector: employee.sector,
-      userType: "Contributor"
+      userType: "Contributor",
     };
 
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
     
-    // ✅ RESPOSTA COMPLETA COM DADOS DA EMPRESA
     const response = {
       token,
       user: {
@@ -148,13 +175,16 @@ export const employeeLogin = async (req, res) => {
         access: employee.access,
         sector: employee.sector,
         userType: "Contributor",
-        // ✅ DADOS DA EMPRESA AGREGADOS
+        
         companyName: employee.companyName,
-        companyIcon: employee.companyIcon  // base64 puro
+        companyIcon: companyIconBase64,
+        companyIconUrl: companyIconUrl,
+        companyEmail: employee.companyEmail,
+        companyPhone: employee.companyPhone,
+        companyCnpj: employee.companyCnpj
       }
     };
 
-    console.log("✅ Login COLABORADOR bem-sucedido:", employee.username);
     res.json(response);
 
   } catch (err) {

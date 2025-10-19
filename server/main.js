@@ -11,8 +11,13 @@ import ordersRouter from "../routes/order.js"
 import kardexRouter from '../routes/kardex.js'
 import purchseRouter from "../routes/purchase.js"
 import invoiceRouter from "../routes/invoices.js"
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 import dotenv from "dotenv"
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: "../.env" })
 
@@ -26,10 +31,12 @@ app.use(cors({
 
 
 // Para PNG + ICO, 5MB é mais que suficiente
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ limit: '5mb', extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
 
-
+// ✅ CRÍTICO: Servir arquivos estáticos (ANTES das rotas de API)
+app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
+console.log('📁 Servindo arquivos estáticos em: /uploads');
 
 app.use("/admin", adminRouter)
 

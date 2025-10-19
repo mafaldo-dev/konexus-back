@@ -8,6 +8,7 @@ const router =  Router()
 router.post("/create", authMiddleware, purchaseOrderBuy)
 
 router.get("/all", authMiddleware, getAllPurchaseOrders)
+
 router.get("/:orderNumber", authMiddleware, getPurchaseOrderByNumber)
 
 router.put("/:id", authMiddleware, updatePurchaseOrder)

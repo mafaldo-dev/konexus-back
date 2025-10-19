@@ -3,8 +3,8 @@ import pool from "../../database/conection.js";
 // ====================== HELPERS ====================== //
 
 const validateRequiredFields = (body) => {
-  const { name, email, phone, code } = body;
-  return !name || !email || !phone || !code;
+  const { name, email, phone, code, status } = body;
+  return !name || !email || !phone || !code || !status;
 };
 
 const validateAddressFields = (address) => {
@@ -14,12 +14,13 @@ const validateAddressFields = (address) => {
 };
 
 const buildUpdateValues = (updateFields, existingCustomer) => {
-  const { name, email, phone, code } = updateFields;
+  const { name, email, phone, code, status } = updateFields;
   return [
     name ?? existingCustomer.name,
     email ?? existingCustomer.email,
     phone ?? existingCustomer.phone,
-    code ?? existingCustomer.code
+    code ?? existingCustomer.code,
+    status ?? existingCustomer.status
   ];
 };
 
@@ -43,7 +44,7 @@ export const insertCustomer = async (req, res) => {
     });
   }
 
-  const { name, email, phone, code, address } = req.body;
+  const { name, email, phone, code, status, address } = req.body;
 
   if (address && validateAddressFields(address)) {
     return res.status(400).json({ 
@@ -56,11 +57,11 @@ export const insertCustomer = async (req, res) => {
 
     // Inserir cliente
     const customerQuery = `
-      INSERT INTO Customers (name, email, phone, code, companyId) 
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO Customers (name, email, phone, code, status, companyId) 
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `;
-    const customerValues = [name, email, phone, code, req.user.companyId];
+    const customerValues = [name, email, phone, code, status, req.user.companyId];
     const customerResult = await pool.query(customerQuery, customerValues);
     const customer = customerResult.rows[0];
 
@@ -118,6 +119,7 @@ export const handleAllCustomers = async (req, res) => {
       email: row.email,
       phone: row.phone,
       code: row.code,
+      status: row.status,
       companyId: row.companyid,
       createdAt: row.createdat,
       address: row.street ? {
@@ -166,6 +168,7 @@ export const getCustomerById = async (req, res) => {
       email: row.email,
       phone: row.phone,
       code: row.code,
+      status: row.status,
       companyId: row.companyid,
       createdAt: row.createdat,
       updatedAt: row.updatedat,
@@ -189,9 +192,9 @@ export const getCustomerById = async (req, res) => {
 //----------- UPDATE ----------//
 export const updateCustomerById = async (req, res) => {
   const { id } = req.params;
-  const { name, email, phone, code, address } = req.body;
+  const { name, email, phone, code, status, address } = req.body;
 
-  if ([name, email, phone, code, address].every(f => f === undefined)) {
+  if ([name, email, phone, code, status, address].every(f => f === undefined)) {
     return res.status(400).json({ Info: "É necessário enviar pelo menos um campo para atualizar!" });
   }
 
@@ -209,11 +212,11 @@ export const updateCustomerById = async (req, res) => {
     }
 
     // Atualizar cliente
-    if (name !== undefined || email !== undefined || phone !== undefined || code !== undefined) {
+    if (name !== undefined || email !== undefined || phone !== undefined || code !== undefined || status !== undefined) {
       const updateCustomerQuery = `
         UPDATE Customers
-        SET name = $1, email = $2, phone = $3, code = $4
-        WHERE id = $5 AND companyId = $6
+        SET name = $1, email = $2, phone = $3, code = $4, status = $5
+        WHERE id = $6 AND companyId = $7
         RETURNING *
       `;
       const customerUpdateValues = [
@@ -286,6 +289,7 @@ export const updateCustomerById = async (req, res) => {
       email: row.email,
       phone: row.phone,
       code: row.code,
+      status: row.status,
       companyId: row.companyid,
       createdAt: row.createdat,
       updatedAt: row.updatedat,

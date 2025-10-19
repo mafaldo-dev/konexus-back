@@ -36,6 +36,7 @@ const Q = {
       p.name AS productName, 
       p.code AS productCode,
       p.location AS productLocation,
+      p.brand AS productBrand,
       oi.quantity, 
       oi.coast AS unitCost, 
       (oi.quantity * oi.coast) AS subtotal
@@ -75,8 +76,6 @@ const Q = {
 
 // ===================== HELPERS ===================== //
 const insertOrderItems = async (client, orderId, items, companyId) => {
-  console.log("🔍 DEBUG insertOrderItems - Tipo de items:", typeof items);
-  console.log("🔍 DEBUG insertOrderItems - É array?", Array.isArray(items));
 
   if (!Array.isArray(items)) {
     throw new Error(`Items deve ser um array. Recebido: ${typeof items}`);
@@ -331,26 +330,25 @@ export const getPurchaseOrderByNumber = async (req, res) => {
 
       const o = orderRes.rows[0];
       
-      // RETORNO NO FORMATO EXATO DA INTERFACE PurchaseOrder
       return {
         id: o.id,
         orderNumber: o.ordernumber,
-        supplierId: o.supplierid.toString(), // ✅ Converte para string como na interface
+        supplierId: o.supplierid.toString(), 
         orderDate: o.orderdate,
         orderStatus: o.orderstatus,
-        totalCost: parseFloat(o.totalcost), // ✅ Garante que é number
+        totalCost: parseFloat(o.totalcost), 
         currency: o.currency,
         notes: o.notes,
         companyId: req.user.companyId,
         orderItems: itemsRes.rows.map(item => ({
-          productid: item.productid.toString(), // ✅ Converte para string
+          productid: item.productid.toString(),
           quantity: item.quantity,
-          cost: parseFloat(item.unitcost), // ✅ Garante que é number
+          cost: parseFloat(item.unitcost),
           productname: item.productname,
           productcode: item.productcode,
-          productlocation: item.productlocation
+          productlocation: item.productlocation,
+          productbrand: item.productbrand
         })),
-        // Campos opcionais para UI
         supplier: {
           id: o.supplierid.toString(),
           name: o.suppliername,
@@ -359,7 +357,7 @@ export const getPurchaseOrderByNumber = async (req, res) => {
         },
         requestingCompany: {
           id: req.user.companyId,
-          name: req.user.companyName || "Empresa", // ✅ Ajuste conforme seu auth
+          name: req.user.companyName || "Empresa",
           buyer: o.buyer
         },
         createdAt: o.createdat || new Date().toISOString()

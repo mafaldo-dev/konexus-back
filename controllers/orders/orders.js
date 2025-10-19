@@ -14,16 +14,16 @@ const ORDER_STATUS = {
 
 // Validações auxiliares
 const validateOrderFields = (body) => {
-  const { orderItems, customerId, totalAmount, currency, orderDate, salesperson, orderNumber } = body;
-  return !orderItems || !customerId || !totalAmount || !currency || !orderDate || !salesperson || !orderNumber;
+  const { orderItems, customerId, totalAmount, currency, orderDate, salesperson, orderNumber, carrier } = body;
+  return !orderItems || !customerId || !totalAmount || !currency || !orderDate || !salesperson || !orderNumber || !carrier
 };
 
 // Queries SQL - CORRIGIDAS para usar os nomes corretos das colunas
 const ORDER_QUERIES = {
   INSERT_ORDER: `
     INSERT INTO Orders 
-      (companyId, orderDate, orderStatus, orderNumber, customerId, totalAmount, currency, shippingAddressId, billingAddressId, salesperson, notes)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      (companyId, orderDate, orderStatus, orderNumber, customerId, totalAmount, currency, shippingAddressId, billingAddressId, salesperson, notes, carrier)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     RETURNING id
   `,
   INSERT_ORDER_ITEM: `
@@ -44,6 +44,7 @@ const ORDER_QUERIES = {
       o.notes,
       o.total_volumes AS total_volume,
       o.total_weight,
+      o.carrier,
       c.id AS customerId,
       c.name AS customerName,
       c.email AS customerEmail,
@@ -91,6 +92,7 @@ const ORDER_QUERIES = {
       o.notes,
       o.total_volumes AS total_volume,
       o.total_weight,
+      o.carrier,
       c.name AS customerName,
       c.email AS customerEmail,
       c.code AS customerCode,
@@ -129,6 +131,7 @@ const ORDER_QUERIES = {
       o.notes,
       o.total_volumes AS total_volume,  
       o.total_weight,
+      o.carrier,
       c.id AS customerId,
       c.name AS customerName,
       c.email AS customerEmail,
@@ -150,6 +153,7 @@ const ORDER_QUERIES = {
       o.currency,
       o.salesperson,
       o.notes,
+      o.carrier,
       o.total_volumes AS total_volume,
       o.total_weight,
       o.customerId,
@@ -186,8 +190,9 @@ const ORDER_QUERIES = {
       billingAddressId = $6,
       salesperson = $7,
       notes = $8,
+      carrier = $9,
       updatedAt = NOW()
-    WHERE id = $9 AND companyId = $10 AND orderStatus IN ('pending', 'backout')
+    WHERE id = $10 AND companyId = $11 AND orderStatus IN ('pending', 'backout')
     RETURNING *
   `,
 
@@ -286,6 +291,7 @@ const getFullOrderDetails = async (client, orderId, companyId) => {
     currency: row.currency,
     salesperson: row.salesperson,
     notes: row.notes,
+    carrier: row.carrier,
     totalVolumes: row.total_volume,
     totalWeight: row.total_weight,
     customer: {
@@ -333,7 +339,8 @@ export const createOrderSale = async (req, res) => {
     shippingAddressId,
     billingAddressId,
     salesperson,
-    notes
+    notes,
+    carrier
   } = req.body;
 
   const companyId = req.user.companyId;
@@ -354,7 +361,8 @@ export const createOrderSale = async (req, res) => {
       shippingAddressId,
       billingAddressId,
       salesperson,
-      notes || null
+      notes || null,
+      carrier
     ]);
 
     const orderId = orderResult.rows[0].id;
@@ -416,6 +424,7 @@ export const getAllOrders = async (req, res) => {
           salesperson: row.salesperson,
           totalVolumes: row.total_volume,
           totalWeight: row.total_weight,
+          carrier: row.carrier,
           customer: {
             name: row.customername,
             email: row.customeremail,
@@ -679,8 +688,9 @@ export const getOrderForEdit = async (req, res) => {
       currency: order.currency,
       salesperson: order.salesperson,
       notes: order.notes,
-      totalVolumes: order.total_volume, // Agora vem do alias
+      totalVolumes: order.total_volume, 
       totalWeight: order.total_weight,
+      carrier:order.carrier,
       customerId: order.customerid,
       shippingAddressId: order.shippingaddressid,
       billingAddressId: order.billingaddressid,
@@ -716,7 +726,6 @@ export const getOrderForEdit = async (req, res) => {
       }))
     };
 
-    console.log("✅ [ORDER EDIT] Pedido encontrado para edição");
     res.status(200).json(RESPONSES.GET_SUCCESS(fullOrder));
 
   } catch (err) {
@@ -738,6 +747,7 @@ export const updateOrder = async (req, res) => {
     billingAddressId,
     salesperson,
     notes,
+    carrier,
     orderItems
   } = req.body;
 
@@ -768,6 +778,7 @@ export const updateOrder = async (req, res) => {
       billingAddressId,
       salesperson,
       notes || null,
+      carrier,
       id,
       companyId
     ]);
@@ -785,17 +796,14 @@ export const updateOrder = async (req, res) => {
 
     // 5️⃣ Inserir novos itens
     const insertedItems = await insertOrderItems(client, id, orderItems);
-    console.log("✅ [ORDER UPDATE] Itens atualizados:", insertedItems.length);
 
     // 6️⃣ Processar novas movimentações do Kardex
     await createKardexMovements(companyId, id, insertedItems, client);
-    console.log("✅ [ORDER UPDATE] Kardex atualizado");
 
     // 7️⃣ Buscar pedido atualizado
     const fullOrder = await getFullOrderDetails(client, id, companyId);
 
     await client.query('COMMIT');
-    console.log("✅ [ORDER UPDATE] COMMIT realizado!");
 
     res.status(200).json({
       Info: "Pedido atualizado com sucesso!",
@@ -817,7 +825,6 @@ export const cancelOrder = async (req, res) => {
   const client = await pool.connect();
 
   try {
-    console.log(`🛑 [ORDER CANCEL] Iniciando cancelamento do pedido ID: ${id}`);
 
     await client.query("BEGIN");
 
@@ -852,12 +859,8 @@ export const cancelOrder = async (req, res) => {
         [item.quantity, item.productid, companyId]
       );
     }
-
-    console.log("✅ [ORDER CANCEL] Estoque revertido com sucesso!");
-
     // 4️⃣ Remove movimentações antigas no Kardex
     await deleteKardexByOrderId(id, client);
-    console.log("✅ [ORDER CANCEL] Movimentações do Kardex removidas.");
 
     // 5️⃣ Atualiza o status do pedido
     await client.query(ORDER_QUERIES.UPDATE_ORDER_STATUS, [
@@ -865,8 +868,6 @@ export const cancelOrder = async (req, res) => {
     ]);
 
     await client.query("COMMIT");
-
-    console.log(`✅ [ORDER CANCEL] Pedido ${id} cancelado com sucesso!`);
 
     res.status(200).json({
       Info: "Pedido cancelado com sucesso e estoque revertido.",
