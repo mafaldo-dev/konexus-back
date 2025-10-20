@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  backend:
+    build: .
+    container_name: backend
+    ports:
+      - "3010:3010"
+    env_file: .env
+    depends_on:
+      - db
+    restart: always
+
+  db:
+    image: postgres:15
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "!devgui123@"
+      POSTGRES_DB: guiman
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
