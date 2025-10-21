@@ -23,12 +23,25 @@ dotenv.config({ path: "../.env" })
 
 const app = express()
 
-app.use(cors({
-    origin: "http://localhost:3000",
-    methods: ["POST", "GET", "PUT", "DELETE", "PATCH"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-}))
+const allowedOrigins = [
+  "http://localhost:3000",
+  "file://",
+  "app://.",
+  "capacitor://localhost",
+  "https://backend-oi68.onrender.com"
+];
 
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("CORS bloqueado para esta origem: " + origin));
+    }
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
 
 // Para PNG + ICO, 5MB é mais que suficiente
 app.use(express.json({ limit: '10mb' }));
