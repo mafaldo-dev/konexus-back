@@ -11,6 +11,8 @@ import ordersRouter from "../routes/order.js"
 import kardexRouter from '../routes/kardex.js'
 import purchseRouter from "../routes/purchase.js"
 import invoiceRouter from "../routes/invoices.js"
+import serviceRouter from "../routes/serviceOrders.js"
+
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -43,13 +45,10 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
-// Para PNG + ICO, 5MB é mais que suficiente
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ CRÍTICO: Servir arquivos estáticos (ANTES das rotas de API)
 app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
-console.log('📁 Servindo arquivos estáticos em: /uploads');
 
 app.use("/admin", adminRouter)
 
@@ -79,6 +78,9 @@ app.use("/kardex", kardexRouter)
 
 //INVOICE ROUTER
 app.use("/invoice", invoiceRouter)
+
+//ORDER SERVIÇE
+app.use("/service", serviceRouter)
 
 
 

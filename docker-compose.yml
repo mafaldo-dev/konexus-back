@@ -5,6 +5,8 @@ services:
     ports:
       - "3010:3010"
     env_file: .env
+    volumes:
+      - ./uploads:/app/uploads 
     depends_on:
       - db
     restart: always

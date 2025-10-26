@@ -32,7 +32,7 @@ export const login = async (req, res) => {
       FROM Administrator 
       WHERE username = $1
     `;
-    
+
     const { rows } = await pool.query(query, [username]);
 
     if (rows.length === 0) {
@@ -48,12 +48,12 @@ export const login = async (req, res) => {
     const tokenPayload = {
       id: admin.id,
       username: admin.username,
-      role: "Administrator", 
+      role: "Administrator",
       userType: "Administrator"
     };
 
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-    
+
     const response = {
       token,
       user: {
@@ -123,28 +123,33 @@ export const employeeLogin = async (req, res) => {
     let companyIconBase64 = null;
     let companyIconUrl = null;
 
-    if (employee.companyIcon) {      
+    if (employee.companyIcon) {
+      // Caminho absoluto seguro (funciona local e no container)
+      const uploadsDir = path.resolve(process.cwd(), "uploads", "logos");
+      const logoPath = path.join(uploadsDir, employee.companyIcon);
 
-      const logoPath = path.join(__dirname, '../../uploads/logos', employee.companyIcon);
-      
+      console.log("🧩 Caminho do logo:", logoPath);
+      console.log("📂 Diretório atual:", process.cwd());
+      console.log("📦 __dirname:", __dirname);
+
       if (fs.existsSync(logoPath)) {
-        
         try {
           const buffer = fs.readFileSync(logoPath);
-          const ext = path.extname(employee.companyIcon).toLowerCase().replace(".", "") || 'png';
-          companyIconBase64 = `data:image/${ext};base64,${buffer.toString('base64')}`;
+          const ext = path.extname(employee.companyIcon).toLowerCase().replace(".", "") || "png";
+          companyIconBase64 = `data:image/${ext};base64,${buffer.toString("base64")}`;
           
-          const appBaseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+          const appBaseUrl = process.env.APP_BASE_URL || `${req.protocol}://${req.get("host")}`;
           companyIconUrl = `${appBaseUrl}/uploads/logos/${employee.companyIcon}`;
-          
         } catch (fileError) {
           console.error("❌ Erro ao converter logo:", fileError);
         }
       } else {
-        
-        const uploadsDir = path.join(__dirname, '../../uploads/logos');
-        if (fs.existsSync(uploadsDir)) {
+        console.warn("🚫 Logo não encontrada em:", logoPath);
+        try {
           const files = fs.readdirSync(uploadsDir);
+          console.log("📁 Arquivos disponíveis:", files);
+        } catch {
+          console.error("❌ Diretório de uploads/logos não encontrado!");
         }
       }
     }

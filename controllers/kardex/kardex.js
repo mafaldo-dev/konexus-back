@@ -10,8 +10,8 @@ const MOVEMENT_TYPES = {
 const KARDEX_QUERIES = {
   INSERT_KARDEX: `
     INSERT INTO Kardex
-      (companyId, productId, orderId, movementType, quantity, unitPrice, movementDate)
-    VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      (companyId, productId, orderId, movementType, quantity, unitPrice, movementDate, stock_before, stock_after)
+    VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8)
     RETURNING *
   `,
   UPDATE_PRODUCT_STOCK: `
@@ -26,26 +26,38 @@ const KARDEX_QUERIES = {
     WHERE orderId = $1
   `,
   GET_KARDEX_BY_PRODUCT: `
-  SELECT
-    k.id,
-    k.movementType,
-    k.quantity,
-    k.unitPrice,
-    k.movementDate,
-    k.orderId,
-    i.invoice_number as invoiceNumber, 
-    i.issue_date as invoiceDate,           
-    i.status as invoiceStatus,            
-    po.ordernumber as purchaseOrderNumber, 
-    p.name as productName,
-    p.code as productCode
-  FROM Kardex k
-  JOIN Products p ON k.productId = p.id
-  LEFT JOIN Invoices i ON k.orderId = i.order_id AND i.companyId = k.companyId  
-  LEFT JOIN OrdersRequest po ON k.orderId = po.id  
-  WHERE k.productId = $1 AND k.companyId = $2
-  ORDER BY k.movementDate DESC
+    SELECT
+      k.id,
+      k.movementType,
+      k.quantity,
+      k.unitPrice,
+      k.movementDate,
+      k.orderId,
+      i.invoice_number AS invoiceNumber, 
+      i.issue_date AS invoiceDate,           
+      i.status AS invoiceStatus,            
+
+      -- 🔹 Se for ENTRADA, pega número da ordem de compra
+      -- 🔹 Se for SAÍDA, pega número da ordem de venda
+      CASE 
+        WHEN k.movementType = 'entrada' THEN po.ordernumber
+        WHEN k.movementType = 'saida' THEN so.ordernumber
+        ELSE NULL
+      END AS purchaseOrderNumber,
+
+      p.name AS productName,
+      p.code AS productCode,
+      k.stock_before AS "stockBefore",
+      k.stock_after AS "stockAfter"
+    FROM Kardex k
+    JOIN Products p ON k.productId = p.id
+    LEFT JOIN Invoices i ON k.orderId = i.order_id AND i.companyId = k.companyId  
+    LEFT JOIN OrdersRequest po ON k.orderId = po.id  -- pedidos de compra
+    LEFT JOIN Orders so ON k.orderId = so.id         -- pedidos de venda
+    WHERE k.productId = $1 AND k.companyId = $2
+    ORDER BY k.movementDate DESC
 `,
+
   GET_KARDEX_BY_ORDER: `
     SELECT 
       k.id,
@@ -87,47 +99,54 @@ export const createKardexMovements = async (companyId, orderId, insertedItems, c
     const kardexPromises = insertedItems.map(async (result) => {
       const item = result.rows[0];
 
-      const stockBefore = await db.query(
+      const stockBeforeRes = await db.query(
         'SELECT stock FROM Products WHERE id = $1 AND companyId = $2',
         [item.productid, companyId]
       );
+      const stockBefore = stockBeforeRes.rows[0].stock;
 
+      // Atualiza o estoque
       const stockUpdate = await db.query(KARDEX_QUERIES.UPDATE_PRODUCT_STOCK, [
         item.quantity,
         item.productid,
         companyId
       ]);
 
-      const stockAfter = await db.query(
-        'SELECT stock FROM Products WHERE id = $1 AND companyId = $2',
-        [item.productid, companyId]
-      );
+      const stockAfter = stockUpdate.rows[0].stock;
 
-      const kardexResult = await db.query(KARDEX_QUERIES.INSERT_KARDEX, [
+      // Insere no Kardex já com o saldo anterior e atual
+      const kardexResult = await db.query(`
+        INSERT INTO Kardex
+          (companyId, productId, orderId, movementType, quantity, unitPrice, movementDate, stock_before, stock_after)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8)
+        RETURNING *
+      `, [
         companyId,
         item.productid,
         orderId,
         MOVEMENT_TYPES.SAIDA,
         item.quantity,
-        item.unitprice
+        item.unitprice,
+        stockBefore,
+        stockAfter
       ]);
 
       return {
-        stockBefore: stockBefore.rows[0],
-        stockUpdate: stockUpdate.rows[0],
-        stockAfter: stockAfter.rows[0],
+        stockBefore,
+        stockAfter,
         kardex: kardexResult.rows[0]
       };
     });
 
     const results = await Promise.all(kardexPromises);
-    console.log("✅ [KARDEX] Processamento concluído");
+    console.log("✅ [KARDEX] Movimentações com saldo gravadas com sucesso");
     return results;
   } catch (error) {
     console.error("❌ [KARDEX] Erro:", error);
     throw error;
   }
 };
+
 
 export const deleteKardexByOrderId = async (orderId, client = null) => {
   const db = client || pool; // ← CORREÇÃO: mudar "conect" para "pool"
