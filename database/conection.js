@@ -19,5 +19,6 @@ const pool = new Pool({
 });
 
 console.log("[DB] Conectado ao banco LOCAL (container Docker)");
-export default pool;
 */}
+
+export default pool;
